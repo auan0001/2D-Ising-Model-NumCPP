@@ -1,8 +1,0 @@
-[
-{
-  "directory": "/home/auan/2D-Ising-Model-NumCPP/build",
-  "command": "/usr/bin/c++   -O3 -march=native -W -Wall -Wextra -pedantic -pedantic-errors -o CMakeFiles/ISING.dir/ising.cxx.o -c /home/auan/2D-Ising-Model-NumCPP/ising.cxx",
-  "file": "/home/auan/2D-Ising-Model-NumCPP/ising.cxx",
-  "output": "CMakeFiles/ISING.dir/ising.cxx.o"
-}
-]

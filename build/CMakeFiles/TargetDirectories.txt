@@ -1,3 +1,0 @@
-/home/auan/2D-Ising-Model-NumCPP/build/CMakeFiles/ISING.dir
-/home/auan/2D-Ising-Model-NumCPP/build/CMakeFiles/edit_cache.dir
-/home/auan/2D-Ising-Model-NumCPP/build/CMakeFiles/rebuild_cache.dir
