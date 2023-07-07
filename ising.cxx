@@ -1,4 +1,5 @@
 #include <NumCpp.hpp>
+#include <NumCpp/NdArray/NdArrayCore.hpp>
 #include <cstddef>
 #include <iostream>
 #include <string>
@@ -13,6 +14,30 @@
 #define idx(dH) (dH+4)/2
 #define avgnorm(x) x/((double)M*N*N)
 #define norm(x) x/((double)N*N)
+
+// *** Global simulation constants ***
+
+// Data columns (for writing to file)
+enum DATA_COLS {TEMP, ORDER, CHI, CB, U};
+
+// Simulation parameters
+const unsigned int M = 20000; 
+const unsigned int therm = 1000;
+const unsigned int MC = 1;
+
+// Temperature steps
+struct {
+  const double max = 5;
+  const double min = 0.1;
+  const double step = 80;
+} T;
+
+// Measurements
+const int n_meas = 5;
+
+// ************************************
+
+nc::NdArray<double> ising(const int N, const double J, const double B);
 
 // Metropolis-Hastings
 void metropolis(nc::NdArray<int>& S, const int N, nc::NdArray<double>& kBT, const double J, const double B, double T_i);
@@ -38,26 +63,19 @@ int main (int argc, char *argv[]) {
   const double B = atof(argv[3]);   // External B-field strength
   const std::string file = argv[4]; // File to store data in
 
-  // Data columns (for writing to file)
-  enum DATA_COLS {TEMP, ORDER, CHI, CB, U};
 
-  // Simulation parameters
-  const unsigned int M = 200000; 
-  const unsigned int therm = 1000;
-  const unsigned int MC = 1;
+  // Print columns
+  nc::NdArray<double> data = ising(N, J, B);
+  tofile(data, file);
+  return 0;
+}
 
-  // Temperature steps
-  struct {
-    const double max = 5;
-    const double min = 0.1;
-    const double step = 80;
-  } T;
+// TODO function pointer for choosing method
+nc::NdArray<double> ising(const int N, const double J, const double B) {
 
   // Set random seed for reproducibility
   nc::random::seed(1337);
 
-  // Measurements
-  const int n_meas = 5;
   double m0 = 0,
          m = 0,
          E0 = 0,
@@ -94,8 +112,8 @@ int main (int argc, char *argv[]) {
     // Simulation and measurements
     for (size_t i = 0; i < M; i++) {
       for (size_t j = 0; j < MC*SZ; j++) {
-        // metropolis(S, N, kBT, J, B, T_i);
-        heatbath(S, N, kBT, J, T_i);
+        metropolis(S, N, kBT, J, B, T_i);
+        // heatbath(S, N, kBT, J, T_i);
       }
 
       // Order param
@@ -126,12 +144,8 @@ int main (int argc, char *argv[]) {
     measurements(T_i,U) = 1-m4/(3*(m2*m2));
 
   }
-
-  // Print columns
-  tofile(measurements, file);
-  return 0;
+  return measurements;
 }
-
 // Metropolis-Hastings (implemented with external field)
 void metropolis(nc::NdArray<int>& S, const int N, nc::NdArray<double>& kBT, const double J,  const double B, double T_i) {
   nc::NdArray<int> s = nc::random::randInt({1,2},N);
@@ -162,7 +176,7 @@ double energy(nc::NdArray<int>& S, const int N, const double J, const double B) 
 // Write columns to file (NumCPP has a tofile() function that can be reshaped during the data analysis)
 void tofile(nc::NdArray<double>& measurements, std::string file) {
   std::ofstream out;
-  std::string path = "./Data/";
+  std::string path = "../data/";
   out.open(path+file);
   // Header
   out << "temp " << "order " << "chi " << "cb " << "u" << std::endl;
