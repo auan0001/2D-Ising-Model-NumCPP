@@ -1,8 +1,10 @@
 #include <NumCpp.hpp>
-#include <NumCpp/NdArray/NdArrayCore.hpp>
 #include <cstddef>
+#include <functional>
 #include <iostream>
 #include <string>
+
+using namespace nc;
 
 // Indexing, normalizing and averages
 #define SITE s[0],s[1]
@@ -24,6 +26,8 @@ enum DATA_COLS {TEMP, ORDER, CHI, CB, U};
 const unsigned int M = 20000; 
 const unsigned int therm = 1000;
 const unsigned int MC = 1;
+const std::string method1 = "metropolis";
+const std::string method2 = "heatbath";
 
 // Temperature steps
 struct {
@@ -37,44 +41,50 @@ const int n_meas = 5;
 
 // ************************************
 
-nc::NdArray<double> ising(const int N, const double J, const double B);
+NdArray<double> ising(const int N, const double J, const double B, const std::string method_opt);
 
 // Metropolis-Hastings
-void metropolis(nc::NdArray<int>& S, const int N, nc::NdArray<double>& kBT, const double J, const double B, double T_i);
+void metropolis(NdArray<int>& S, const int N, double kBT_i, const double J, const double B);
 
 // Heat-bath
-void heatbath(nc::NdArray<int>& S, const int N, nc::NdArray<double>& kBT, const double J, double T_i);
+void heatbath(NdArray<int>& S, const int N, double kBT_i, const double J);
 
 // Energy
-double energy(nc::NdArray<int>& S, const int N, const double J, const double B);
+double energy(NdArray<int>& S, const int N, const double J, const double B);
 
 // Print data columns
-void tofile(nc::NdArray<double>& measurements, std::string file);
+void tofile(NdArray<double>& measurements, std::string file);
 
 int main (int argc, char *argv[]) {
-  if (argc < 5 || argc >= 6) {
-    std::cout << std::endl << "USAGE: <lattice dim> <J> <B> <file>" << std::endl;
+
+  auto input_method = (std::string(argv[4]));
+
+  if (argc != 6) {
+    fprintf(stderr, "USAGE: <lattice dim> <J> <B> <metropolis/heatbath> <filename>\n");
+    return EXIT_FAILURE;
+  } else if (!(input_method == method1 || input_method == method2)) {
+    fprintf(stderr, "Methods: <metropolis/heatbath>\n");
     return EXIT_FAILURE;
   }
 
   // Input args
+  // TODO Bad program design to skip argv[4]?
   const int N = atoi(argv[1]);      // Square lattice dims
   const double J = atof(argv[2]);   // Coupling strength
   const double B = atof(argv[3]);   // External B-field strength
-  const std::string file = argv[4]; // File to store data in
-
+  const std::string file = argv[5]; // File to store data in
 
   // Print columns
-  nc::NdArray<double> data = ising(N, J, B);
+  NdArray<double> data = ising(N, J, B, input_method);
   tofile(data, file);
   return 0;
 }
 
 // TODO function pointer for choosing method
-nc::NdArray<double> ising(const int N, const double J, const double B) {
+NdArray<double> ising(const int N, const double J, const double B, const std::string method_opt) {
 
   // Set random seed for reproducibility
-  nc::random::seed(1337);
+  random::seed(1337);
 
   double m0 = 0,
          m = 0,
@@ -85,25 +95,38 @@ nc::NdArray<double> ising(const int N, const double J, const double B) {
          m4 = 0;
 
   // Temperature from high to low
-  auto kBT = nc::fliplr(nc::linspace(T.min, T.max, T.step));
+  auto kBT = fliplr(linspace(T.min, T.max, T.step));
+
+  // Function to handle computation
+  // Simplified to using only variables in signature
+  // Mostly made for learning
+  std::function<void(NdArray<int>&, double)> computation;
+
+  // The two methods are checked during input
+  if (method_opt == method1) {
+    computation = std::bind(&metropolis, std::placeholders::_1, N, std::placeholders::_2, J, B);
+  } else {
+    computation = std::bind(&heatbath, std::placeholders::_1, N, std::placeholders::_2, J);
+  }
 
   // Order parameter lambda
   auto order = [](auto S, auto N){
-    return nc::abs(nc::sum<int>(S).item())/((double)SZ);
+    return abs(sum<int>(S).item())/((double)SZ);
   };
 
   // Init spin matrix with random ICs
-  auto S = nc::random::choice<int>({-1,1},SZ).reshape(N,N);
+  auto S = random::choice<int>({-1,1},SZ).reshape(N,N);
 
   // Measurement matrix
-  auto measurements = nc::NdArray<double>(kBT.shape().cols,n_meas);
+  auto measurements = NdArray<double>(kBT.shape().cols,n_meas);
 
   for (size_t T_i = 0; T_i < kBT.shape().cols; T_i++) {
 
     // Thermalization
     for (size_t i = 0; i < therm*SZ; i++) {
+      computation(S, kBT[T_i]);
       // metropolis(S, N, kBT, J, B, T_i);
-      heatbath(S, N, kBT, J, T_i);
+      // heatbath(S, N, kBT, J, T_i);
     }
 
     // Reset measurements
@@ -112,8 +135,11 @@ nc::NdArray<double> ising(const int N, const double J, const double B) {
     // Simulation and measurements
     for (size_t i = 0; i < M; i++) {
       for (size_t j = 0; j < MC*SZ; j++) {
-        metropolis(S, N, kBT, J, B, T_i);
-        // heatbath(S, N, kBT, J, T_i);
+        // S, T_i varies per iter
+        // N, J, B, T_i constant per iter
+        computation(S, kBT[T_i]);
+        // metropolis(S, N, kBT, J, B, T_i);
+        // heatbath(S, N, kBT[T_i], J);
       }
 
       // Order param
@@ -142,39 +168,38 @@ nc::NdArray<double> ising(const int N, const double J, const double B) {
     measurements(T_i,CHI) = (m2-m*m)/(kBT[T_i]);
     measurements(T_i,CB) = (E2-E*E)/(kBT[T_i]*kBT[T_i]);
     measurements(T_i,U) = 1-m4/(3*(m2*m2));
-
   }
   return measurements;
 }
 // Metropolis-Hastings (implemented with external field)
-void metropolis(nc::NdArray<int>& S, const int N, nc::NdArray<double>& kBT, const double J,  const double B, double T_i) {
-  nc::NdArray<int> s = nc::random::randInt({1,2},N);
+void metropolis(NdArray<int>& S, const int N, double kBT_i, const double J,  const double B) {
+  NdArray<int> s = random::randInt({1,2},N);
   auto S_alpha_beta = S(SITE)*(S(n1)+S(n2)+S(n3)+S(n4));
   auto dE = 2.0*J*S_alpha_beta+2.0*B*S(SITE);
-  if (dE <= 0 || nc::random::rand<double>() < nc::exp(-dE/kBT[T_i])) 
+  if (dE <= 0 || random::rand<double>() < exp(-dE/kBT_i)) 
     S(SITE) = -S(SITE);
 }
 
 // Heat-bath (not implemented with external field)
-void heatbath(nc::NdArray<int>& S, const int N, nc::NdArray<double>& kBT, const double J, double T_i) {
-  nc::NdArray<int> s = nc::random::randInt({1,2},N);
+void heatbath(NdArray<int>& S, const int N, double kBT_i, const double J) {
+  NdArray<int> s = random::randInt({1,2},N);
   auto s_j = S(n1)+S(n2)+S(n3)+S(n4);
-  auto p_i = 1.0/(1.0 + nc::exp(-2.0*J*s_j/kBT[T_i]));
+  auto p_i = 1.0/(1.0 + exp(-2.0*J*s_j/kBT_i));
   // Always accept the change
-  S(SITE) = (nc::random::rand<double>() < p_i) ? 1: -1;
+  S(SITE) = (random::rand<double>() < p_i) ? 1: -1;
 }
 
 // Energy
-double energy(nc::NdArray<int>& S, const int N, const double J, const double B) {
-  auto nbrs = nc::roll(S, 1, nc::Axis::COL)
-    + nc::roll(S, -1, nc::Axis::COL)
-    + nc::roll(S, 1, nc::Axis::ROW)
-    + nc::roll(S, -1, nc::Axis::ROW);
-  return (-J*nc::sum(nc::matmul(S,nbrs)).item() -B*nc::sum(S).item())/((double)SZ);
+double energy(NdArray<int>& S, const int N, const double J, const double B) {
+  auto nbrs = roll(S, 1, Axis::COL)
+    + roll(S, -1, Axis::COL)
+    + roll(S, 1, Axis::ROW)
+    + roll(S, -1, Axis::ROW);
+  return (-J*sum(matmul(S,nbrs)).item() -B*sum(S).item())/((double)SZ);
 }
 
 // Write columns to file (NumCPP has a tofile() function that can be reshaped during the data analysis)
-void tofile(nc::NdArray<double>& measurements, std::string file) {
+void tofile(NdArray<double>& measurements, std::string file) {
   std::ofstream out;
   std::string path = "../data/";
   out.open(path+file);
