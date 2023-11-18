@@ -8,15 +8,15 @@ Build and compile the project by changing the the build directory
 % cmake ..
 ```
 
-Running the binary with parameters $L=32$, $J=1$, $B=0$ and saving the results in `run.dat`
+Running the binary with parameters $L=32$, $J=1$, $B=0$ using Metropolis-Hastings and saving the results in `run.dat`
 
 ```
-./ISING 32 1.0 0.0 run.dat
+./ISING 32 1.0 0.0 metropolis run.dat
 ```
 If number of args are incorrect, the console will display
 
 ```
-USAGE: <lattice dim> <J> <B> <file>
+USAGE: <lattice dim> <J> <B> <metropolis/heatbath> <file>
 ```
 
 ## Results
