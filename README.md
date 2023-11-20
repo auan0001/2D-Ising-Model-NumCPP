@@ -11,12 +11,19 @@ Build and compile the project by changing the the build directory
 Running the binary with parameters $L=32$, $J=1$, $B=0$ using Metropolis-Hastings and saving the results in `run.dat`
 
 ```
-./ISING 32 1.0 0.0 metropolis run.dat
+./ISING metropolis 32 1.0 0.0 run.dat
 ```
+
+or the Heat bath method
+
+```
+./ISING heatbath 32 1.0 0.0 run.dat
+```
+
 If number of args are incorrect, the console will display
 
 ```
-USAGE: <lattice dim> <J> <B> <metropolis/heatbath> <file>
+USAGE: <metropolis/heatbath> <lattice dim> <J> <B> <file>
 ```
 
 ## Results
