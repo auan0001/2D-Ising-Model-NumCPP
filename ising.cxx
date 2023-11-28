@@ -1,5 +1,4 @@
 #include <NumCpp.hpp>
-#include <NumCpp/NdArray/NdArrayCore.hpp>
 #include <cstddef>
 #include <functional>
 #include <iostream>
@@ -7,16 +6,17 @@
 
 using namespace nc;
 
-// Indexing, normalizing and averages
+// 2D coordinates representing a site in the spin lattice S.
 #define SITE s[0], s[1]
-#define SZ N *N
+
+// Spin lattice size
+#define SZ N * N
+
+// von Neumann neighborhood
 #define n1 (s[0] + 1) % N, s[1]
 #define n2 s[0], (s[1] + 1) % N
 #define n3 (s[0] - 1) % N, s[1]
 #define n4 s[0], (s[1] - 1) % N
-#define idx(dH) (dH + 4) / 2
-#define avgnorm(x) x / ((double)M * N * N)
-#define norm(x) x / ((double)N * N)
 
 // *** Global simulation constants ***
 
@@ -34,7 +34,7 @@ const std::string method2 = "heatbath";
 struct {
   const double max = 5;
   const double min = 0.1;
-  const double step = 80;
+  const double steps = 80;
 } T;
 
 // Measurements
@@ -57,7 +57,7 @@ void tofile(NdArray<double> &measurements, std::string file);
 
 int main(int argc, char *argv[]) {
 
-  const auto input_method = (std::string(argv[1]));
+  const auto input_method = std::string(argv[1]);
 
   if (argc != 6) {
     fprintf(stderr,
@@ -90,7 +90,7 @@ NdArray<double> ising(const int N, const double J, const double B,
   double m0 = 0, m = 0, E0 = 0, E = 0, E2 = 0, m2 = 0, m4 = 0;
 
   // Temperature from high to low
-  auto kBT = fliplr(linspace(T.min, T.max, T.step));
+  NdArray<double> kBT = fliplr(linspace(T.min, T.max, T.steps));
 
   // Function to handle computation
   // Simplified to using only variables in signature
@@ -98,13 +98,13 @@ NdArray<double> ising(const int N, const double J, const double B,
   std::function<void(NdArray<int> &, double)> computation;
 
   // The two methods are checked during input before
-  // getting bound. 
+  // getting bound to constant args. 
   if (method_opt == method1) {
-  //f(a,b,c,d,e) -> f(a,d)
+  //f(a,b,c,d,e) -> [b,c,e]f(a,d)
     computation = std::bind(&metropolis, std::placeholders::_1, N,
                             std::placeholders::_2, J, B);
   } else {
-  //f(a,b,c,d) -> f(a,c)
+  //f(a,b,c,d) -> [b,d]f(a,c)
     computation = std::bind(&heatbath, std::placeholders::_1, N,
                             std::placeholders::_2, J);
   }
@@ -116,8 +116,9 @@ NdArray<double> ising(const int N, const double J, const double B,
 
   // Energy lambda function
   auto energy = [N, J, B](NdArray<int> &S) {
-    auto nbrs = roll(S, 1, Axis::COL) + roll(S, -1, Axis::COL) +
+    NdArray<int> nbrs = roll(S, 1, Axis::COL) + roll(S, -1, Axis::COL) +
                 roll(S, 1, Axis::ROW) + roll(S, -1, Axis::ROW);
+
     return (-J * sum(matmul(S, nbrs)).item() - B * sum(S).item()) /
            ((double)SZ);
   };
@@ -178,8 +179,8 @@ NdArray<double> ising(const int N, const double J, const double B,
 void metropolis(NdArray<int> &S, const int N, double kBT_i, const double J,
                 const double B) {
   NdArray<int> s = random::randInt({1, 2}, N);
-  auto S_alpha_beta = S(SITE) * (S(n1) + S(n2) + S(n3) + S(n4));
-  auto dE = 2.0 * J * S_alpha_beta + 2.0 * B * S(SITE);
+  int S_alpha_beta = S(SITE) * (S(n1) + S(n2) + S(n3) + S(n4));
+  double dE = 2.0 * J * S_alpha_beta + 2.0 * B * S(SITE);
   if (dE <= 0 || random::rand<double>() < exp(-dE / kBT_i))
     S(SITE) = -S(SITE);
 }
@@ -187,8 +188,8 @@ void metropolis(NdArray<int> &S, const int N, double kBT_i, const double J,
 // Heat-bath (not implemented with external field)
 void heatbath(NdArray<int> &S, const int N, double kBT_i, const double J) {
   NdArray<int> s = random::randInt({1, 2}, N);
-  auto s_j = S(n1) + S(n2) + S(n3) + S(n4);
-  auto p_i = 1.0 / (1.0 + exp(-2.0 * J * s_j / kBT_i));
+  int s_j = S(n1) + S(n2) + S(n3) + S(n4);
+  double p_i = 1.0 / (1.0 + exp(-2.0 * J * s_j / kBT_i));
   // Always accept the change
   S(SITE) = (random::rand<double>() < p_i) ? 1 : -1;
 }
